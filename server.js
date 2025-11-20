@@ -1,32 +1,32 @@
 import express from "express";
 import { createBot } from "./index.js";
 
-// environment variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const PORT = process.env.PORT || 3000;
 
 console.log("🔧 Environment check:", {
   hasBOT_TOKEN: !!BOT_TOKEN,
-  hasWEBHOOK_URL: !!WEBHOOK_URL,
   PORT: PORT,
 });
 
-if (!BOT_TOKEN || !WEBHOOK_URL) {
-  console.error("❌ Missing required environment variables:");
-  console.error("BOT_TOKEN:", BOT_TOKEN ? "✅ Set" : "❌ Missing");
-  console.error("WEBHOOK_URL:", WEBHOOK_URL ? "✅ Set" : "❌ Missing");
-  console.error(
-    "Please set BOT_TOKEN and WEBHOOK_URL in Render environment variables"
-  );
+if (!BOT_TOKEN) {
+  console.error("❌ Missing BOT_TOKEN");
   process.exit(1);
 }
 
-// from index.js
 const bot = createBot(BOT_TOKEN);
-
 const app = express();
 app.use(express.json());
+
+let WEBHOOK_URL = process.env.WEBHOOK_URL;
+if (!WEBHOOK_URL) {
+  WEBHOOK_URL =
+    process.env.RENDER_EXTERNAL_URL ||
+    `https://${process.env.RENDER_SERVICE_NAME}.onrender.com` ||
+    `http://localhost:${PORT}`;
+}
+
+console.log("🌐 Detected Webhook URL:", WEBHOOK_URL);
 
 // Webhook endpoint
 app.post(`/webhook`, async (req, res) => {
@@ -41,35 +41,58 @@ app.post(`/webhook`, async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("🤖 Bot is running via Webhook!");
+  res.send(`
+    <h1>🤖 Bot is running!</h1>
+    <p>Webhook URL: ${WEBHOOK_URL}/webhook</p>
+    <p><a href="/webhook-info">Check Webhook Info</a></p>
+  `);
 });
 
-// Health check endpoint
-app.get("/health", (req, res) => {
-  res.json({
-    status: "OK",
-    timestamp: new Date().toISOString(),
-    webhook_url: `${WEBHOOK_URL}/webhook`,
-  });
+app.get("/webhook-info", async (req, res) => {
+  try {
+    const webhookInfo = await bot.telegram.getWebhookInfo();
+    res.json({
+      status: "success",
+      detected_webhook_url: `${WEBHOOK_URL}/webhook`,
+      telegram_webhook_info: webhookInfo,
+      environment: {
+        RENDER_EXTERNAL_URL: process.env.RENDER_EXTERNAL_URL,
+        RENDER_SERVICE_NAME: process.env.RENDER_SERVICE_NAME,
+        PORT: PORT,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: "error",
+      error: err.message,
+    });
+  }
 });
 
-// Start server
+// webhook setup
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 Webhook URL: ${WEBHOOK_URL}/webhook`);
 
   try {
     const webhookUrl = `${WEBHOOK_URL}/webhook`;
     console.log(`🔄 Setting webhook to: ${webhookUrl}`);
 
     await bot.telegram.deleteWebhook();
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    await bot.telegram.setWebhook(webhookUrl);
-    console.log("✅ Webhook set successfully!");
+    const result = await bot.telegram.setWebhook(webhookUrl);
+    console.log("✅ Webhook set result:", result);
 
     const webhookInfo = await bot.telegram.getWebhookInfo();
-    console.log("📋 Webhook Info:", JSON.stringify(webhookInfo, null, 2));
+    console.log("📋 Final Webhook Info:");
+    console.log("- URL:", webhookInfo.url);
+    console.log(
+      "- Has Custom Certificate:",
+      webhookInfo.has_custom_certificate
+    );
+    console.log("- Pending Updates:", webhookInfo.pending_update_count);
+    console.log("- Last Error Date:", webhookInfo.last_error_date);
+    console.log("- Last Error Message:", webhookInfo.last_error_message);
   } catch (err) {
     console.error("❌ Failed to set webhook:", err);
   }
