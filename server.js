@@ -18,14 +18,21 @@ const app = express();
 app.use(express.json());
 
 // Webhook endpoint
-app.post(`/bot${BOT_TOKEN}`, (req, res) => {
-  bot.handleUpdate(req.body, res);
-  res.sendStatus(200);
+app.post(`/bot${BOT_TOKEN}`, async (req, res) => {
+  try {
+    await bot.handleUpdate(req.body);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error(err);
+    res.sendStatus(500);
+  }
 });
 
 app.get("/", (req, res) => {
   res.send("Bot is running via Webhook!");
 });
+
+bot.launch();
 
 // Start server
 app
