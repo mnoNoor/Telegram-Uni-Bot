@@ -1,5 +1,29 @@
 import { Telegraf, Markup } from "telegraf";
 
+const residential_units = [
+  { id: 1, name: "شقة غرفتين", price: 300, reserved: false },
+  { id: 2, name: "شقة ثلاث غرف", price: 450, reserved: false },
+  { id: 3, name: "شقة غرفة واحدة", price: 200, reserved: false },
+];
+
+const userSessions = {};
+
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function formatDate(date) {
+  return date.toISOString().split("T")[0];
+}
+
+function backKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("الرجوع للبداية 🏠", "BACK_TO_START")],
+  ]);
+}
+
 export function createBot(token) {
   const bot = new Telegraf(token);
 
@@ -8,32 +32,233 @@ export function createBot(token) {
       "أهلاً بك في البوت 🤖\nاختر أحد الخيارات:",
       Markup.inlineKeyboard([
         [
-          Markup.button.callback("📘 معلومات", "INFO"),
-          Markup.button.callback("📞 تواصل", "CONTACT"),
+          Markup.button.callback("معلومات 📘", "INFO"),
+          Markup.button.callback("تواصل 📞", "CONTACT"),
+        ],
+        [
+          Markup.button.callback("حجز وحدة 🏠", "RENT"),
+          Markup.button.callback("حالة الحجز 📋", "STATUS"),
         ],
       ])
     );
   };
 
   bot.start((ctx) => {
+    userSessions[ctx.from.id] = {};
     startMessage(ctx);
   });
 
   bot.action("INFO", (ctx) => {
     ctx.editMessageText(
-      "📘 هذا نص تجريبي للمعلومات.\nيمكنك وضع أي محتوى هنا.",
-      Markup.inlineKeyboard([
-        [Markup.button.callback("🔙 الرجوع للبداية", "BACK_TO_START")],
-      ])
+      "📘 هذا البوت مخصص لحجز وحدات سكنية بطريقة سهلة وآمنة.",
+      backKeyboard()
     );
   });
 
   bot.action("CONTACT", (ctx) => {
     ctx.editMessageText(
       "📞 للتواصل:\nexample@email.com\n+963xxxxxxxx",
+      backKeyboard()
+    );
+  });
+
+  bot.action("RENT", (ctx) => {
+    const availableUnits = residential_units.filter((u) => !u.reserved);
+
+    if (availableUnits.length === 0) {
+      return ctx.editMessageText(
+        "❌ لا توجد وحدات متاحة حاليًا.",
+        backKeyboard()
+      );
+    }
+
+    ctx.editMessageText(
+      "🏠 اختر وحدة للحجز:",
       Markup.inlineKeyboard([
-        [Markup.button.callback("🔙 الرجوع للبداية", "BACK_TO_START")],
+        ...availableUnits.map((unit) => [
+          Markup.button.callback(
+            `${unit.name} - ${unit.price}$`,
+            `UNIT_${unit.id}`
+          ),
+        ]),
+        [Markup.button.callback("الرجوع للبداية 🏠", "BACK_TO_START")],
       ])
+    );
+  });
+
+  bot.action(/UNIT_(\d+)/, (ctx) => {
+    const unitId = Number(ctx.match[1]);
+    userSessions[ctx.from.id] = { selectedUnit: unitId };
+
+    const unit = residential_units.find((u) => u.id === unitId);
+
+    ctx.editMessageText(
+      `🏠 ${unit.name}\n💰 ${unit.price}$\n\nاختر يوم بداية الحجز:`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("اليوم", "START_TODAY"),
+          Markup.button.callback("غدًا", "START_TOMORROW"),
+        ],
+        [Markup.button.callback("الرجوع ⏪", "RENT")],
+      ])
+    );
+  });
+
+  bot.action("START_TODAY", (ctx) => {
+    userSessions[ctx.from.id].startDate = new Date();
+    askForId(ctx);
+  });
+
+  bot.action("START_TOMORROW", (ctx) => {
+    userSessions[ctx.from.id].startDate = addDays(new Date(), 1);
+    askForId(ctx);
+  });
+
+  function askForId(ctx) {
+    userSessions[ctx.from.id].waitingForId = true;
+
+    ctx.editMessageText(
+      "🪪 من فضلك اكتب رقم الهوية الخاص بك:",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("إلغاء ❌", "BACK_TO_START")],
+      ])
+    );
+  }
+
+  bot.on("text", (ctx) => {
+    const session = userSessions[ctx.from.id];
+
+    if (!session?.waitingForId) return;
+
+    const idNumber = ctx.message.text.trim();
+
+    if (!/^\d{6,}$/.test(idNumber)) {
+      return ctx.reply("❌ رقم الهوية غير صالح، حاول مرة أخرى:");
+    }
+
+    session.idNumber = idNumber;
+    session.waitingForId = false;
+
+    askDuration(ctx);
+  });
+
+  function askDuration(ctx) {
+    ctx.reply(
+      "⏳ اختر مدة الحجز:",
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("يوم واحد", "DURATION_1"),
+          Markup.button.callback("أسبوع", "DURATION_7"),
+        ],
+        [
+          Markup.button.callback("شهر", "DURATION_30"),
+          Markup.button.callback("سنة", "DURATION_365"),
+        ],
+      ])
+    );
+  }
+
+  bot.action(/DURATION_(\d+)/, (ctx) => {
+    const days = Number(ctx.match[1]);
+    const session = userSessions[ctx.from.id];
+
+    const endDate = addDays(session.startDate, days);
+    session.durationDays = days;
+    session.endDate = endDate;
+
+    const unit = residential_units.find(
+      (u) => u.id === session.selectedUnit
+    );
+
+    ctx.editMessageText(
+      `📋 مراجعة الحجز:
+
+🏠 الوحدة: ${unit.name}
+🪪 رقم الهوية: ${session.idNumber}
+📅 البداية: ${formatDate(session.startDate)}
+📅 النهاية: ${formatDate(endDate)}
+⏳ المدة: ${days} يوم
+💰 السعر: ${unit.price}$
+
+هل تريد تأكيد الحجز؟`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("تأكيد ✅", "CONFIRM_RENT"),
+          Markup.button.callback("إلغاء ❌", "BACK_TO_START"),
+        ],
+      ])
+    );
+  });
+
+  bot.action("CONFIRM_RENT", (ctx) => {
+    const session = userSessions[ctx.from.id];
+    const unit = residential_units.find(
+      (u) => u.id === session.selectedUnit
+    );
+
+    if (unit.reserved) {
+      return ctx.editMessageText("❌ هذه الوحدة محجوزة مسبقًا.");
+    }
+
+    unit.reserved = true;
+    session.reservation = {
+      unit,
+      startDate: session.startDate,
+      endDate: session.endDate,
+      idNumber: session.idNumber,
+    };
+
+    ctx.editMessageText(
+      "✅ تم تأكيد الحجز بنجاح!",
+      backKeyboard()
+    );
+  });
+
+  bot.action("STATUS", (ctx) => {
+    const reservation = userSessions[ctx.from.id]?.reservation;
+
+    if (!reservation) {
+      return ctx.editMessageText(
+        "📋 لا يوجد لديك أي حجز.",
+        backKeyboard()
+      );
+    }
+
+    ctx.editMessageText(
+      `📋 حالة الحجز:
+🏠 ${reservation.unit.name}
+🪪 الهوية: ${reservation.idNumber}
+📅 من: ${formatDate(reservation.startDate)}
+📅 إلى: ${formatDate(reservation.endDate)}
+✅ نشط`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("إلغاء الحجز ❌", "CANCEL_RENT"),
+          Markup.button.callback("الرجوع 🏠", "BACK_TO_START"),
+        ],
+      ])
+    );
+  });
+
+  bot.action("CANCEL_RENT", (ctx) => {
+    const session = userSessions[ctx.from.id];
+    if (!session?.reservation) return;
+
+    session.reservation.unit.reserved = false;
+    session.reservation = null;
+
+    ctx.editMessageText(
+      "❌ تم إلغاء الحجز بنجاح.",
+      backKeyboard()
+    );
+  });
+
+  bot.action("BACK_TO_START", (ctx) => {
+    startMessage(ctx);
+  });
+
+  return bot;
+}
     );
   });
 
