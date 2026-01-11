@@ -3,7 +3,7 @@ import { Telegraf, Markup } from "telegraf";
 const residential_units = [
   { id: 1, name: "شقة غرفتين", price: 300, reserved: false },
   { id: 2, name: "شقة ثلاث غرف", price: 450, reserved: false },
-  { id: 3, name: "شقة غرفة واحدة", price: 200, reserved: false },
+  { id: 3, name: "استوديو", price: 200, reserved: false },
 ];
 
 const userSessions = {};
@@ -29,15 +29,15 @@ export function createBot(token) {
 
   const startMessage = (ctx) => {
     ctx.reply(
-      "أهلاً بك في البوت 🤖\nاختر أحد الخيارات:",
+      "مرحباً بك في بوت حجز سكني!\nأنا هنا لمساعدتك في حجز الوحدات السكنية بشكل تلقائي.\n\nاستخدم الأزرار بالأسفل للبدء:",
       Markup.inlineKeyboard([
         [
-          Markup.button.callback("معلومات 📘", "INFO"),
-          Markup.button.callback("تواصل 📞", "CONTACT"),
+          Markup.button.callback("طريقة الاستخدام 📘", "INFO"),
+          Markup.button.callback("حجز وحدة 🏠", "RENT"),
         ],
         [
-          Markup.button.callback("حجز وحدة 🏠", "RENT"),
           Markup.button.callback("حالة الحجز 📋", "STATUS"),
+          Markup.button.callback("تواصل 📞", "CONTACT"),
         ],
       ])
     );
@@ -49,11 +49,17 @@ export function createBot(token) {
   });
 
   bot.action("INFO", (ctx) => {
-    ctx.editMessageText(
-      "📘 هذا البوت مخصص لحجز وحدات سكنية بطريقة سهلة وآمنة.",
+  ctx.editMessageText(
+    `📘 هذا البوت مخصص لحجز وحدات سكنية بطريقة سهلة وآمنة.
+     هذا البوت يساعدك في:
+
+     - حجز الوحدات السكنية تلقائياً
+     - البحث عن زر الحجز في الوقت المحدد
+     - متابعة حالة الحجز`,
       backKeyboard()
     );
   });
+
 
   bot.action("CONTACT", (ctx) => {
     ctx.editMessageText(
@@ -132,9 +138,10 @@ export function createBot(token) {
 
     const idNumber = ctx.message.text.trim();
 
-    if (!/^\d{6,}$/.test(idNumber)) {
+    if (!/^\d{10}$/.test(idNumber)) {
       return ctx.reply("❌ رقم الهوية غير صالح، حاول مرة أخرى:");
     }
+
 
     session.idNumber = idNumber;
     session.waitingForId = false;
@@ -259,13 +266,4 @@ export function createBot(token) {
 
   return bot;
 }
-    );
-  });
 
-  bot.action("BACK_TO_START", (ctx) => {
-    startMessage(ctx);
-  });
-
-  return bot;
-}
-  
