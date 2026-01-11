@@ -1,13 +1,13 @@
 import { Telegraf, Markup } from "telegraf";
 
 const residential_units = [
-  { id: 1, name: "شقة", rooms: 2, neighborhood: "الحي الأزرق", price: 300, reserved: false },
-  { id: 2, name: "شقة", rooms: 3, neighborhood: "الحي الأخضر", price: 450, reserved: false },
-  { id: 3, name: "استوديو", rooms: 1, neighborhood: "الحي الأحمر", price: 200, reserved: false },
+  { id: 1, name: "شقة", rooms: 2, neighborhood: "حي النظيم", price: 300, reserved: false },
+  { id: 2, name: "شقة", rooms: 3, neighborhood: "حي النسيم الشرقي", price: 450, reserved: false },
+  { id: 3, name: "استوديو", rooms: 1, neighborhood: "حي الملز", price: 200, reserved: false },
   { id: 4, name: "شقة", rooms: 2, neighborhood: "الحي المركزي", price: 320, reserved: false },
-  { id: 5, name: "شقة", rooms: 4, neighborhood: "الحي الراقي", price: 600, reserved: false },
+  { id: 5, name: "شقة", rooms: 4, neighborhood: "حي النرجس", price: 600, reserved: false },
   { id: 6, name: "شقة", rooms: 1, neighborhood: "الحي القديم", price: 220, reserved: false },
-  { id: 7, name: "شقة", rooms: 3, neighborhood: "الحي البحري", price: 480, reserved: false },
+  { id: 7, name: "شقة", rooms: 3, neighborhood: "الحي الشمالي", price: 480, reserved: false },
   { id: 8, name: "استوديو", rooms: 1, neighborhood: "الحي الجنوبي", price: 190, reserved: false },
 ];
 
@@ -210,7 +210,7 @@ export function createBot(token) {
   function askForId(ctx) {
     userSessions[ctx.from.id].waitingForId = true;
     ctx.editMessageText(
-      "🪪 من فضلك اكتب رقم الهوية الخاص بك (أو أرسل رقم الشقة للحجز مباشرة مثل: 3 أو حجز 3):",
+      "🪪 من فضلك اكتب رقم الهوية الخاص بك:",
       Markup.inlineKeyboard([[Markup.button.callback("إلغاء ❌", "BACK_TO_START")]])
     );
   }
