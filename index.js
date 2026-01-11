@@ -1,62 +1,46 @@
-import { Telegraf } from "telegraf";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const responses = require("./responses.json");
+import { Telegraf, Markup } from "telegraf";
 
 export function createBot(token) {
   const bot = new Telegraf(token);
 
-  bot.start((ctx) => ctx.reply("Welcome!"));
+  const startMessage = (ctx) => {
+    ctx.reply(
+      "أهلاً بك في البوت 🤖\nاختر أحد الخيارات:",
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("📘 معلومات", "INFO"),
+          Markup.button.callback("📞 تواصل", "CONTACT"),
+        ],
+      ])
+    );
+  };
 
-  bot.hears(/^(ردود|الردود)$/i, (ctx) => {
-    ctx.reply(`📋 ردود البوت:
-    
-1- مستويات الانجليزي
-2- الارشادات
-3- تحديد المستوى
-4- الشؤون
-5- التخصصات
-6- نسب s25
-7- تسجيل الفصول
-8- مواصفات اللابتوب`);
+  bot.start((ctx) => {
+    startMessage(ctx);
   });
 
-  bot.hears(/^(en|مستويات الانجليزي|مستويات الإنجليزي)$/i, (ctx) => {
-    ctx.replyWithPhoto(
-      { source: "./images/english_levels.png" },
-      { caption: "مستويات الإنجليزي" }
+  bot.action("INFO", (ctx) => {
+    ctx.editMessageText(
+      "📘 هذا نص تجريبي للمعلومات.\nيمكنك وضع أي محتوى هنا.",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("🔙 الرجوع للبداية", "BACK_TO_START")],
+      ])
     );
   });
 
-  bot.hears(/^(الارشادات|guide)$/i, (ctx) => {
-    ctx.replyWithDocument(responses.guide, {
-      caption: "لائحة الهندسة المعلوماتية",
-    });
+  bot.action("CONTACT", (ctx) => {
+    ctx.editMessageText(
+      "📞 للتواصل:\nexample@email.com\n+963xxxxxxxx",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("🔙 الرجوع للبداية", "BACK_TO_START")],
+      ])
+    );
   });
 
-  bot.hears(/^(تحديد المستوى|PT)$/i, (ctx) => {
-    ctx.replyWithDocument(responses.PT, { caption: "اختبار تحديد المستوى" });
-  });
-
-  bot.hears(/^(الشؤون|email)$/i, (ctx) => {
-    ctx.reply(`ايميل شؤون المعلوماتية: ${responses.email}`);
-  });
-
-  bot.hears(/^(التخصصات|majors)$/i, (ctx) => {
-    ctx.reply(responses.majors);
-  });
-
-  bot.hears(/^(نسب s25|acceptance 2025|acceptance s25)$/i, (ctx) => {
-    ctx.reply(responses.acceptance_s25);
-  });
-
-  bot.hears(/^(تسجيل الفصول|تسجيل الشعب)$/i, (ctx) => {
-    ctx.reply(responses.course_registration);
-  });
-
-  bot.hears(/^(مواصفات اللابتوب|المواصفات|laptop)$/i, (ctx) => {
-    ctx.reply(responses.laptop_specs);
+  bot.action("BACK_TO_START", (ctx) => {
+    startMessage(ctx);
   });
 
   return bot;
 }
+  
