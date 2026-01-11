@@ -1,9 +1,14 @@
 import { Telegraf, Markup } from "telegraf";
 
 const residential_units = [
-  { id: 1, name: "شقة غرفتين", price: 300, reserved: false },
-  { id: 2, name: "شقة ثلاث غرف", price: 450, reserved: false },
-  { id: 3, name: "استوديو", price: 200, reserved: false },
+  { id: 1, name: "شقة", rooms: 2, neighborhood: "حي النظيم", price: 300, reserved: false },
+  { id: 2, name: "شقة", rooms: 3, neighborhood: "حي النسيم الشرقي", price: 450, reserved: false },
+  { id: 3, name: "استوديو", rooms: 1, neighborhood: "حي النسيم الغربي", price: 200, reserved: false },
+  { id: 4, name: "شقة", rooms: 2, neighborhood: "حي الملز", price: 320, reserved: false },
+  { id: 5, name: "شقة", rooms: 4, neighborhood: "حي النرجس", price: 600, reserved: false },
+  { id: 6, name: "شقة", rooms: 1, neighborhood: "الحي القديم", price: 220, reserved: false },
+  { id: 7, name: "شقة", rooms: 3, neighborhood: "الحي الشمالي", price: 480, reserved: false },
+  { id: 8, name: "استوديو", rooms: 1, neighborhood: "الحي الجنوبي", price: 190, reserved: false },
 ];
 
 const userSessions = {};
@@ -48,58 +53,126 @@ export function createBot(token) {
     startMessage(ctx);
   });
 
-  bot.action("INFO", (ctx) => {
-  ctx.editMessageText(
-    `📘 هذا البوت مخصص لحجز وحدات سكنية بطريقة سهلة وآمنة.
-     هذا البوت يساعدك في:
+  bot.action("INFO", async (ctx) => {
+    await ctx.answerCbQuery().catch(()=>{});
+    ctx.editMessageText(
+      `📘 هذا البوت مخصص لحجز وحدات سكنية بطريقة سهلة وآمنة.
+هذا البوت يساعدك في:
 
-     - حجز الوحدات السكنية تلقائياً
-     - البحث عن زر الحجز في الوقت المحدد
-     - متابعة حالة الحجز`,
+- حجز الوحدات السكنية تلقائياً
+- البحث عن زر الحجز في الوقت المحدد
+- متابعة حالة الحجز`,
       backKeyboard()
     );
   });
 
-
-  bot.action("CONTACT", (ctx) => {
+  bot.action("CONTACT", async (ctx) => {
+    await ctx.answerCbQuery().catch(()=>{});
     ctx.editMessageText(
       "📞 للتواصل:\nexample@email.com\n+963xxxxxxxx",
       backKeyboard()
     );
   });
 
-  bot.action("RENT", (ctx) => {
-    const availableUnits = residential_units.filter((u) => !u.reserved);
+  const UNITS_PER_PAGE = 5;
+
+  async function renderRent(ctx) {
+    const userId = ctx.from.id;
+    if (!userSessions[userId]) userSessions[userId] = {};
+    if (!userSessions[userId].rentPage) userSessions[userId].rentPage = 1;
+
+    const page = userSessions[userId].rentPage;
+    const availableUnits = residential_units.filter(u => !u.reserved);
 
     if (availableUnits.length === 0) {
-      return ctx.editMessageText(
-        "❌ لا توجد وحدات متاحة حاليًا.",
-        backKeyboard()
+      try {
+        return await ctx.editMessageText(
+          "❌ لا توجد وحدات متاحة حاليًا.",
+          backKeyboard()
+        );
+      } catch (e) {
+        return ctx.reply("❌ لا توجد وحدات متاحة حاليًا.", backKeyboard());
+      }
+    }
+
+    const start = (page - 1) * UNITS_PER_PAGE;
+    const end = start + UNITS_PER_PAGE;
+    const pageUnits = availableUnits.slice(start, end);
+
+    if (ctx.callbackQuery) {
+      await ctx.deleteMessage().catch(() => {});
+    }
+
+    for (const unit of pageUnits) {
+      await ctx.telegram.sendMessage(
+        ctx.chat.id,
+        `🏠 *${unit.name}* (الرقم: ${unit.id})
+🛏️ عدد الغرف: *${unit.rooms}*
+📍 الحي: *${unit.neighborhood}*
+💰 السعر: *${unit.price}$*`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: Markup.inlineKeyboard([
+            [Markup.button.callback("حجز هذه الوحدة ✅", `UNIT_${unit.id}`)]
+          ])
+        }
       );
     }
 
-    ctx.editMessageText(
-      "🏠 اختر وحدة للحجز:",
-      Markup.inlineKeyboard([
-        ...availableUnits.map((unit) => [
-          Markup.button.callback(
-            `${unit.name} - ${unit.price}$`,
-            `UNIT_${unit.id}`
-          ),
-        ]),
-        [Markup.button.callback("الرجوع للبداية 🏠", "BACK_TO_START")],
-      ])
+    const navButtons = [];
+    if (page > 1) {
+      navButtons.push(Markup.button.callback("⬅️ السابق", "RENT_PREV"));
+    }
+    if (end < availableUnits.length) {
+      navButtons.push(Markup.button.callback("التالي ➡️", "RENT_NEXT"));
+    }
+    navButtons.push(Markup.button.callback("الرجوع للبداية 🏠", "BACK_TO_START"));
+
+    await ctx.telegram.sendMessage(
+      ctx.chat.id,
+      `📄 الصفحة ${page} — عرض الوحدات ${start + 1}-${Math.min(end, availableUnits.length)} من ${availableUnits.length}`,
+      Markup.inlineKeyboard([navButtons])
     );
+  }
+
+  bot.action("RENT", async (ctx) => {
+    await ctx.answerCbQuery().catch(()=>{});
+    const userId = ctx.from.id;
+    if (!userSessions[userId]) userSessions[userId] = {};
+    userSessions[userId].rentPage = 1;
+    await renderRent(ctx);
+  });
+
+  bot.action("RENT_NEXT", async (ctx) => {
+    await ctx.answerCbQuery().catch(()=>{});
+    const userId = ctx.from.id;
+    if (!userSessions[userId]) userSessions[userId] = {};
+    userSessions[userId].rentPage = (userSessions[userId].rentPage || 1) + 1;
+    await renderRent(ctx);
+  });
+
+  bot.action("RENT_PREV", async (ctx) => {
+    await ctx.answerCbQuery().catch(()=>{});
+    const userId = ctx.from.id;
+    if (!userSessions[userId]) userSessions[userId] = {};
+    userSessions[userId].rentPage = Math.max(1, (userSessions[userId].rentPage || 1) - 1);
+    await renderRent(ctx);
   });
 
   bot.action(/UNIT_(\d+)/, (ctx) => {
+    ctx.answerCbQuery().catch(()=>{});
     const unitId = Number(ctx.match[1]);
-    userSessions[ctx.from.id] = { selectedUnit: unitId };
+    if (!userSessions[ctx.from.id]) userSessions[ctx.from.id] = {};
+    userSessions[ctx.from.id].selectedUnit = unitId;
 
     const unit = residential_units.find((u) => u.id === unitId);
 
+    if (!unit) {
+      return ctx.reply("❌ لم أجد هذه الوحدة.");
+    }
+
     ctx.editMessageText(
-      `🏠 ${unit.name}\n💰 ${unit.price}$\n\nاختر يوم بداية الحجز:`,
+      `🏠 ${unit.name}\n🛏️ عدد الغرف: ${unit.rooms}\n📍 الحي: ${unit.neighborhood}\n💰 ${unit.price}$\n\nاختر يوم بداية الحجز:`,
       Markup.inlineKeyboard([
         [
           Markup.button.callback("اليوم", "START_TODAY"),
@@ -111,11 +184,15 @@ export function createBot(token) {
   });
 
   bot.action("START_TODAY", (ctx) => {
+    ctx.answerCbQuery().catch(()=>{});
+    if (!userSessions[ctx.from.id]) userSessions[ctx.from.id] = {};
     userSessions[ctx.from.id].startDate = new Date();
     askForId(ctx);
   });
 
   bot.action("START_TOMORROW", (ctx) => {
+    ctx.answerCbQuery().catch(()=>{});
+    if (!userSessions[ctx.from.id]) userSessions[ctx.from.id] = {};
     userSessions[ctx.from.id].startDate = addDays(new Date(), 1);
     askForId(ctx);
   });
@@ -142,7 +219,6 @@ export function createBot(token) {
       return ctx.reply("❌ رقم الهوية غير صالح، حاول مرة أخرى:");
     }
 
-
     session.idNumber = idNumber;
     session.waitingForId = false;
 
@@ -166,6 +242,7 @@ export function createBot(token) {
   }
 
   bot.action(/DURATION_(\d+)/, (ctx) => {
+    ctx.answerCbQuery().catch(()=>{});
     const days = Number(ctx.match[1]);
     const session = userSessions[ctx.from.id];
 
@@ -181,6 +258,8 @@ export function createBot(token) {
       `📋 مراجعة الحجز:
 
 🏠 الوحدة: ${unit.name}
+🛏️ عدد الغرف: ${unit.rooms}
+📍 الحي: ${unit.neighborhood}
 🪪 رقم الهوية: ${session.idNumber}
 📅 البداية: ${formatDate(session.startDate)}
 📅 النهاية: ${formatDate(endDate)}
@@ -198,10 +277,13 @@ export function createBot(token) {
   });
 
   bot.action("CONFIRM_RENT", (ctx) => {
+    ctx.answerCbQuery().catch(()=>{});
     const session = userSessions[ctx.from.id];
     const unit = residential_units.find(
       (u) => u.id === session.selectedUnit
     );
+
+    if (!unit) return ctx.reply("❌ خطأ: الوحدة غير موجودة.");
 
     if (unit.reserved) {
       return ctx.editMessageText("❌ هذه الوحدة محجوزة مسبقًا.");
@@ -221,7 +303,8 @@ export function createBot(token) {
     );
   });
 
-  bot.action("STATUS", (ctx) => {
+  bot.action("STATUS", async (ctx) => {
+    await ctx.answerCbQuery().catch(()=>{});
     const reservation = userSessions[ctx.from.id]?.reservation;
 
     if (!reservation) {
@@ -234,6 +317,8 @@ export function createBot(token) {
     ctx.editMessageText(
       `📋 حالة الحجز:
 🏠 ${reservation.unit.name}
+🛏️ عدد الغرف: ${reservation.unit.rooms}
+📍 الحي: ${reservation.unit.neighborhood}
 🪪 الهوية: ${reservation.idNumber}
 📅 من: ${formatDate(reservation.startDate)}
 📅 إلى: ${formatDate(reservation.endDate)}
@@ -248,6 +333,7 @@ export function createBot(token) {
   });
 
   bot.action("CANCEL_RENT", (ctx) => {
+    ctx.answerCbQuery().catch(()=>{});
     const session = userSessions[ctx.from.id];
     if (!session?.reservation) return;
 
@@ -261,9 +347,9 @@ export function createBot(token) {
   });
 
   bot.action("BACK_TO_START", (ctx) => {
+    ctx.answerCbQuery().catch(()=>{});
     startMessage(ctx);
   });
 
   return bot;
 }
-
